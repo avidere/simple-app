@@ -1,150 +1,97 @@
-pipeline{
+/* groovylint-disable-next-line LineLength */
+/* groovylint-disable CompileStatic, DuplicateStringLiteral, NestedBlockDepth, UnusedVariable, VariableName, VariableTypeRequired */
+pipeline {
     agent any
-    tools{
-  maven 'Maven'
-    }
     environment {
-     DOCKER_TAG = getVersion()
-}
-    stages{
-        stage('SCM Pull'){
-            steps{
-                echo "Git Checkout Started"
-                git credentialsId: 'git-creds', 
-                    url: 'https://github.com/styagi935/simple-app.git'
-                echo "Git Checkout Completed"
-            }
-        }
-        stage('Maven Build'){
-            steps{
-                echo "Maven Build Started"
-                sh "mvn clean package"
-                echo "Maven Build needs to be successful"
-            }
-        }
-         stage('Unit Test') { 
+        def git_branch = 'main'
+        def git_url = 'https://github.com/avidere/demo-counter-app.git'
+
+        def mvntest = 'mvn test '
+        def mvnpackage = 'mvn clean install'
+
+        def sonar_cred = 'sonar'
+        def code_analysis = 'mvn clean install sonar:sonar'
+        def utest_url = 'target/surefire-reports/**/*.xml'
+        def nex_cred = 'nexus'
+        def grp_ID = 'com.example'
+        def nex_url = '172.31.28.226:8081'
+        def nex_ver = 'nexus3'
+        def proto = 'http'
+    }
+    stages {
+        stage('Git Checkout') {
             steps {
-                 sh 'mvn test'
-                 echo 'The Unit test is Sucessfull'
+                script {
+                    git branch: "${git_branch}", url: "${git_url}"
+                    echo 'Git Checkout Completed'
+                }
             }
-        }
-        stage('Code Coverage') { 
+        } /*
+        stage('Maven Build') {
             steps {
-                   jacoco exclusionPattern: '**/*Test*.class', inclusionPattern: '**/*.class', sourceExclusionPattern: 'generated/**/*.java'
-                 echo 'The Code Coverage is Sucessfull'
+                sh "${env.mvnpackage}"
+                echo 'Maven Build Completed'
             }
         }
- //       stage('SonarQube Analysis') {
-   //         steps{
-     //           echo "Sonarqube code analysis started"
-       //         withSonarQubeEnv('Sonarqube-8.9.9') { 
-         //       sh "mvn sonar:sonar"
-           //     echo "Sonarqube code analysis started"
-             //  }
-           //}
-        //}
-        stage('Docker Build'){
-            steps{
-                echo "DockerBuild Started"
-                sh "docker build . -t styagi935/simple-app-7.0.0:${DOCKER_TAG}"
-                echo "DockerBuild Completed"
+        stage('Unit Testing and publishing reports') {
+            steps {
+                script {
+                    sh "${env.mvntest}"
+                    echo 'Unit Testing Completed'
+                }
             }
-        }
-        stage('Docker Image Push'){
-            steps{
-                echo "Docker image push to dockerhub started"
-                withCredentials([string(credentialsId: 'docker-hub', variable: 'dockerHubPwd')]){
-                sh "docker login -u styagi935 -p ${dockerHubPwd}"
-                sh "docker push styagi935/simple-app-7.0.0:${DOCKER_TAG}"
-                echo "Docker image has been pushed to dockerhub "
+            post {
+                success {
+                        junit "$utest_url"
+                        jacoco()
                 }
             }
         }
- /*       stage('Docker Deploy'){
-            steps{
-              ansiblePlaybook credentialsId: 'Ans_EC2', disableHostKeyChecking: true,extras: "-e DOCKER_TAG=${DOCKER_TAG}", installation: 'Ansible_Server', inventory: 'dev.inv', playbook: 'deploy-docker.yml'
+        stage('Static code analysis and Quality Gate Status') {
+            steps {
+                script {
+                    withSonarQubeEnv(credentialsId: "${sonar_cred}") {
+                        sh "${code_analysis}"
+                    }
+                    waitForQualityGate abortPipeline: true, credentialsId: "${sonar_cred}"
+                }
+            }
+        } 
+        stage('Upload Artifact to nexus repository') {
+            steps {
+                script {
+                    
+                    def mavenpom = readMavenPom file: 'pom.xml'
+                    def nex_repo = mavenpom.version.endsWith('SNAPSHOT') ? 'demoproject-snapshot' : 'demoproject-Release'
+                    nexusArtifactUploader artifacts: [
+                    [
+                        artifactId: 'springboot',
+                        classifier: '',
+                        file: "target/springboot-${mavenpom.version}.jar",
+                        type: 'jar'
+                    ]
+                ],
+                    credentialsId: "${env.nex_cred}",
+                    groupId: "${env.grp_ID}",
+                    nexusUrl: "${env.nex_url}",
+                    nexusVersion: "${env.nex_ver}",
+                    protocol: "${env.proto}",
+                    repository: "${nex_repo}",
+                    version: "${mavenpom.version}"
+                    echo 'Artifact uploaded to nexus repository'
+                }
             }
         } */
-        stage("Upload Artifactory"){
+        stage('Download Artifact and Deploy on tomcat server using Ansible'){
             steps{
-                script{
-                  def mavenPom = readMavenPom file: 'pom.xml'
-      //            def nexusRepoName = mavenPom.version.endsWith("SNAPSHOT") ? "my-artifacts" : "helloworld-release"
-                   nexusArtifactUploader artifacts: [
-                     [
-                        artifactId: "${mavenPom.artifactId}", 
-                        groupId: "${mavenPom.groupId}",
-                        classifier: '', 
-                        file: "target/simple-app-${mavenPom.version}.war", 
-                        type: 'war'
-                        ]
-                    ], 
-                        credentialsId: 'nexus3', 
-                        groupId: "${mavenPom.groupId}", 
-                        nexusUrl: '3.109.5.157:8081/', 
-                        nexusVersion: 'nexus3', 
-                        protocol: 'http', 
-                        repository: 'my-artifacts', 
-                        version: "${mavenPom.version}"
-                    echo "Artifacts has been uploaded to Nexus"
-                }
-            }
-        }
-        stage('Ansible playbook Pull') {
-            agent {
-                label 'ans'
-            }
-            steps {
-                 git branch: 'main', url: 'https://github.com/styagi935/ansiblerepo.git'
-                 echo 'The Ansible Code is Pulled Sucessfully'
-            }
-        }
-        stage('Artifactory Pull on ansible') {
-            agent {
-                label 'ans'
-            }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus3', passwordVariable: 'typas', usernameVariable: 'tyuser')]) {
-                sh 'wget --user=$tyuser --password=$typas "http://3.109.5.157:8081/repository/my-artifacts/in/javahome/simple-app/7.0.0/simple-app-7.0.0.war"'
-                 echo 'The Artifact is Pulled Sucessfully'
-                }
-            }
-        }
-        stage('Ansible Tomcat Deployment') {
-            agent {
-                label 'ans'
-            }
-            steps {
-               ansiblePlaybook credentialsId: 'private-key', disableHostKeyChecking: true, installation: 'ansible', inventory: 'hosts', playbook: 'pb3.yaml'
-               echo 'Tomcat Deployment is done'
-            }
-        }
-        stage('Pull deployment file') {
-            agent {
-                label 'K8'
-            }
-        steps {
-            git branch: 'main', url: 'https://github.com/styagi935/kuberrepo.git'
-            }
-        }
-        stage('Deploy to EKS'){
-            agent{
-                label 'K8'
-            }
-        steps{
-            script{
-                sh "kubectl get pods"
-                sh "kubectl get svc"
-      //          sh "kubectl delete svc simple-app"
-     //           sh "kubectl delete deploy simple-app"
-                sh "kubectl apply -f service.yaml" 
-                sh "kubectl apply -f k8.yaml"    //will run deployment file
-                }
+
+                 sshagent(['Ansible-server']) {
+                    script{
+                    sh 'ansiblePlaybook credentialsId: 'Ansible-server', installation: 'Ansible', inventory: '/Ansible-integration/inventory.yaml', playbook: '/Ansible-integration/tomcat.yaml', sudo: true, sudoUser: 'devops''
+                    }
+                 }
             }
         }
     }
 }
-def getVersion(){
-    def CommitHash = sh returnStdout: true, script: 'git rev-parse --short HEAD'
-    return CommitHash
-}
+
