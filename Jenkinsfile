@@ -4,7 +4,7 @@ pipeline {
     agent any
     environment {
         def git_branch = 'main'
-        def git_url = 'https://github.com/avidere/demo-counter-app.git'
+        def git_url = 'https://github.com/avidere/simple-app.git'
 
         def mvntest = 'mvn test '
         def mvnpackage = 'mvn clean install'
@@ -26,7 +26,7 @@ pipeline {
                     echo 'Git Checkout Completed'
                 }
             }
-        } /*
+        } 
         stage('Maven Build') {
             steps {
                 sh "${env.mvnpackage}"
@@ -56,7 +56,7 @@ pipeline {
                     waitForQualityGate abortPipeline: true, credentialsId: "${sonar_cred}"
                 }
             }
-        } 
+        } /*
         stage('Upload Artifact to nexus repository') {
             steps {
                 script {
@@ -81,7 +81,7 @@ pipeline {
                     echo 'Artifact uploaded to nexus repository'
                 }
             }
-        } */
+        } 
         stage('Download Artifact and Deploy on tomcat server using Ansible'){
             steps{
 
@@ -91,7 +91,7 @@ pipeline {
                     }
                  }
             }
-        }
+        } */
     }
 }
 
