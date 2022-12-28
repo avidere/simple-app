@@ -3,7 +3,7 @@
 pipeline {
     agent any
     environment {
-        def git_branch = 'main'
+        def git_branch = 'master'
         def git_url = 'https://github.com/avidere/simple-app.git'
 
         def mvntest = 'mvn test '
